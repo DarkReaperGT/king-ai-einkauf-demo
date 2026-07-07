@@ -1,129 +1,171 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>KING AI Einkauf | Login</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KING AI | Anmeldung</title>
   <style>
     :root {
-      --bg: #172235;
-      --surface: #ffffff;
-      --text: #172033;
-      --muted: #64748b;
-      --line: #dbe3ec;
-      --blue: #315f9e;
-      --shadow: 0 24px 70px rgba(15, 23, 42, .22);
+      --blue: #2f6fed;
+      --violet: #6b2fe8;
+      --brand-gradient: linear-gradient(135deg, #2f6fed, #6b2fe8);
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
       min-height: 100vh;
+      display: grid;
+      place-items: center;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       background:
-        radial-gradient(circle at top left, rgba(80, 120, 170, .35), transparent 30%),
-        radial-gradient(circle at bottom right, rgba(80, 170, 145, .25), transparent 28%),
-        linear-gradient(135deg, #243449, #111827 70%);
-      color: var(--text);
+        radial-gradient(circle at 15% 20%, rgba(47, 111, 237, 0.25) 0, transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(107, 47, 232, 0.28) 0, transparent 45%),
+        linear-gradient(160deg, #05070d 0%, #0a0f1f 55%, #0d1526 100%);
+      color: #fff;
+    }
+
+    .card {
+      width: min(92vw, 420px);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      border-radius: 22px;
+      padding: 34px 30px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 30px 70px rgba(5, 7, 13, 0.55);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+
+    .brand-mark {
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      background: var(--brand-gradient);
+      flex: 0 0 46px;
       display: grid;
       place-items: center;
-      padding: 20px;
+      font-weight: 900;
+      font-size: 18px;
+      box-shadow: 0 14px 30px rgba(107, 47, 232, 0.35);
     }
-    main {
-      width: min(100%, 480px);
-      background: rgba(255,255,255,.96);
-      border: 1px solid rgba(255,255,255,.55);
-      border-radius: 24px;
-      box-shadow: var(--shadow);
-      padding: 30px;
-    }
-    .badge {
-      width: 56px;
-      height: 56px;
-      border-radius: 18px;
-      display: grid;
-      place-items: center;
-      background: #eaf1fb;
-      color: #1d4ed8;
-      font-size: 28px;
-      margin-bottom: 16px;
-    }
-    h1 {
+
+    .brand h1 {
       margin: 0;
-      font-size: 28px;
-      letter-spacing: -.04em;
+      font-size: 17px;
+      letter-spacing: -0.01em;
     }
-    p {
-      margin: 10px 0 22px;
-      color: var(--muted);
-      line-height: 1.55;
+
+    .brand p {
+      margin: 3px 0 0;
+      color: rgba(255, 255, 255, 0.65);
+      font-size: 12px;
     }
+
+    h2 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      letter-spacing: -0.02em;
+    }
+
+    .sub {
+      margin: 0 0 24px;
+      color: rgba(255, 255, 255, 0.65);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
     label {
       display: block;
       font-size: 12px;
-      font-weight: 900;
-      color: #334155;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.8);
       text-transform: uppercase;
-      letter-spacing: .05em;
-      margin: 14px 0 7px;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
     }
+
+    .field { margin-bottom: 16px; }
+
     input {
       width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 13px 14px;
-      font: inherit;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      color: #fff;
+      font-size: 14px;
       outline: none;
-      background: #fff;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
     }
+
+    input::placeholder { color: rgba(255, 255, 255, 0.35); }
+
     input:focus {
-      border-color: #93c5fd;
-      box-shadow: 0 0 0 4px rgba(147,197,253,.22);
+      border-color: rgba(107, 47, 232, 0.7);
+      box-shadow: 0 0 0 4px rgba(107, 47, 232, 0.22);
+      background: rgba(255, 255, 255, 0.09);
     }
+
     button {
       width: 100%;
-      margin-top: 18px;
+      margin-top: 6px;
+      padding: 13px 14px;
       border: 0;
-      border-radius: 14px;
-      padding: 13px 16px;
-      background: linear-gradient(135deg, #3c679f, #284f80);
+      border-radius: 12px;
+      background: var(--brand-gradient);
       color: #fff;
-      font-weight: 900;
-      font-size: 15px;
+      font-weight: 800;
+      font-size: 14px;
       cursor: pointer;
-      box-shadow: 0 14px 28px rgba(49, 95, 158, .24);
+      box-shadow: 0 16px 32px rgba(107, 47, 232, 0.32);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
     }
+
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+
     .hint {
       margin-top: 18px;
-      padding: 13px;
-      border: 1px solid #dbeafe;
-      background: #eff6ff;
-      border-radius: 14px;
-      color: #315070;
-      font-size: 13px;
-      line-height: 1.45;
+      font-size: 11.5px;
+      color: rgba(255, 255, 255, 0.45);
+      line-height: 1.5;
+      text-align: center;
     }
-    code { font-weight: 800; }
   </style>
 </head>
 <body>
-  <main>
-    <div class="badge">🔐</div>
-    <h1>KING AI Einkauf</h1>
-    <p>Geschützter Zugang für den Unternehmenstest. Nach dem Login wird die KI-Anwendung freigeschaltet.</p>
+  <main class="card">
+    <div class="brand">
+      <div class="brand-mark">K</div>
+      <div>
+        <h1>KING AI Einkauf</h1>
+        <p>Unternehmens-Zugang</p>
+      </div>
+    </div>
 
-    <form method="post" action="/login" autocomplete="on">
-      <label for="username">Benutzername</label>
-      <input id="username" name="username" type="text" autocomplete="username" required autofocus placeholder="unternehmen" />
+    <h2>Anmelden</h2>
+    <p class="sub">Bitte melde dich mit den Zugangsdaten aus der <code>.env</code>-Konfiguration an, um die Einkaufsanalyse zu öffnen.</p>
 
-      <label for="password">Passwort</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Passwort eingeben" />
-
-      <button type="submit">Einloggen</button>
+    <form method="post" action="/login">
+      <div class="field">
+        <label for="username">Benutzername</label>
+        <input id="username" name="username" type="text" autocomplete="username" placeholder="unternehmen" required autofocus />
+      </div>
+      <div class="field">
+        <label for="password">Passwort</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+      </div>
+      <button type="submit">Anmelden</button>
     </form>
 
-    <div class="hint">
-      Zugangsdaten stehen in der Datei <code>.env</code>: <code>LOGIN_USERNAME</code> und <code>LOGIN_PASSWORD</code>.
-    </div>
+    <p class="hint">Zugangsdaten vergessen oder ändern? Trage neue Werte in <code>LOGIN_USERNAME</code> / <code>LOGIN_PASSWORD</code> in der <code>.env</code>-Datei ein und starte den Server neu.</p>
   </main>
 </body>
 </html>

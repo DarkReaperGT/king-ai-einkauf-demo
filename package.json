@@ -1,9 +1,12 @@
 {
   "name": "king-ai-einkauf-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Lokale KI-Unterstützungsanwendung für Einkaufs-, Lastenheft- und Angebotsanalysen mit OpenAI Backend-Proxy und Unternehmens-Login.",
   "main": "server.js",
+  "engines": {
+    "node": ">=18.18.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
@@ -14,3 +17,4 @@
     "express-session": "^1.18.1"
   }
 }
+

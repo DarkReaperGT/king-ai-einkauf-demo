@@ -13,10 +13,20 @@ const API_KEY = process.env.OPENAI_API_KEY || '';
 const LOGIN_USERNAME = process.env.LOGIN_USERNAME || 'unternehmen';
 const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || 'Bitte_Aendern_123!';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-bitte-in-env-aendern';
-const COOKIE_SECURE = String(process.env.COOKIE_SECURE || 'false').toLowerCase() === 'true';
+// Render.com (und die meisten Hoster) laufen hinter einem Reverse-Proxy und
+// terminieren HTTPS dort. COOKIE_SECURE greift daher standardmäßig auf
+// NODE_ENV/RENDER zurück, kann in der .env aber weiterhin explizit gesetzt werden.
+const IS_RENDER = Boolean(process.env.RENDER) || process.env.NODE_ENV === 'production';
+const COOKIE_SECURE = process.env.COOKIE_SECURE !== undefined
+  ? String(process.env.COOKIE_SECURE).toLowerCase() === 'true'
+  : IS_RENDER;
 const SESSION_HOURS = Number(process.env.SESSION_HOURS || 8);
 
 const failedLogins = new Map();
+
+// Nötig, damit express-session/secure-Cookies und die IP-Erkennung hinter dem
+// Render-Proxy korrekt funktionieren (sonst bleiben Logins ggf. hängen).
+app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
