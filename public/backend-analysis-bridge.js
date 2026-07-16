@@ -147,6 +147,122 @@
     showSection("upload");
   }
 
+  const MAX_AI_VERDICT_PAIRS = 80;
+
+  function truncate(text, maxLen) {
+    const value = String(text || "");
+    return value.length > maxLen ? value.slice(0, maxLen) + "\n[...gekürzt...]" : value;
+  }
+
+  function stripJsonFence(raw) {
+    return String(raw || "")
+      .trim()
+      .replace(/^```json/i, "")
+      .replace(/^```/, "")
+      .replace(/```$/, "")
+      .trim();
+  }
+
+  // Fragt die KI gezielt nur für die Kriterien, die die lokale Stichwort-Prüfung
+  // NICHT automatisiert zuordnen konnte (check.checked === false). So bleiben
+  // eindeutige, exakt prüfbare Sachen (Preis, Lieferzeit, Garantie...) schnell und
+  // kostenlos lokal, und nur der unklare Rest (z.B. Hallenfläche, Baugenehmigung,
+  // Statik) geht an die KI. Ergebnis wird direkt in state.comparison[].checks gemerged
+  // und Score/Empfehlung je Angebot neu berechnet.
+  async function enrichChecksWithAiVerdicts(requirements, comparison, reqRawText, offerRawText) {
+    const pending = [];
+    for (const entry of comparison) {
+      for (const check of entry.checks) {
+        if (!check.checked && pending.length < MAX_AI_VERDICT_PAIRS) {
+          pending.push({ requirementId: check.id, priority: check.priority, description: check.description, supplier: entry.offer.supplier });
+        }
+      }
+    }
+
+    if (!pending.length) return { attempted: false, updated: 0 };
+
+    const pairsList = pending
+      .map((p) => `- ${p.requirementId} (${p.priority}) für Lieferant "${p.supplier}": ${p.description}`)
+      .join("\n");
+
+    const instructions =
+      "Du bist ein präziser Prüf-Assistent für Einkauf und Vergabe. Du bekommst Anforderungen aus einem Lastenheft " +
+      "und Rohtext von Lieferantenangeboten. Prüfe für jede genannte Kombination aus Anforderung und Lieferant, ob " +
+      "der Angebotstext belegt, dass die Anforderung erfüllt ist. Antworte AUSSCHLIESSLICH mit einem JSON-Array, ohne " +
+      "Erklärtext, ohne Markdown-Codeblock. Format genau so: " +
+      '[{"requirementId":"R01","supplier":"Firma X","fulfilled":true,"evidence":"kurzer Grund, max. 20 Woerter"}]. ' +
+      'Wenn der Angebotstext dazu gar nichts hergibt, setze "fulfilled": null und begruende kurz, warum eine manuelle Pruefung noetig ist.';
+
+    const input =
+      `LASTENHEFT (Auszug):\n${truncate(reqRawText, 6000)}\n\n` +
+      `ANGEBOTE (Rohtext, kann mehrere Lieferanten enthalten):\n${truncate(offerRawText, 8000)}\n\n` +
+      `ZU PRÜFENDE KOMBINATIONEN:\n${pairsList}`;
+
+    let raw;
+    try {
+      raw = await window.callOpenAI(input, {}, instructions, 3000);
+    } catch (error) {
+      console.warn("KI-Zweitprüfung fehlgeschlagen, Kriterien bleiben auf 'manuell prüfen':", error);
+      return { attempted: true, updated: 0, error: error.message || String(error) };
+    }
+
+    let verdicts;
+    try {
+      verdicts = JSON.parse(stripJsonFence(raw));
+      if (!Array.isArray(verdicts)) throw new Error("Antwort war kein JSON-Array.");
+    } catch (error) {
+      console.warn("KI-Antwort der Zweitprüfung konnte nicht als JSON gelesen werden:", raw);
+      return { attempted: true, updated: 0, error: "Antwort nicht als JSON lesbar" };
+    }
+
+    let updated = 0;
+    for (const entry of comparison) {
+      let touched = false;
+      for (const check of entry.checks) {
+        if (check.checked) continue;
+        const verdict = verdicts.find(
+          (v) => v && String(v.requirementId).trim() === check.id && sameSupplier(v.supplier, entry.offer.supplier)
+        );
+        if (!verdict || verdict.fulfilled === null || verdict.fulfilled === undefined) continue;
+        check.checked = true;
+        check.fulfilled = verdict.fulfilled === true;
+        check.evidence = `KI-Einschätzung: ${text(verdict.evidence) || (check.fulfilled ? "erfüllt laut Angebotstext" : "nicht erfüllt laut Angebotstext")}`;
+        touched = true;
+        updated++;
+      }
+      if (touched) {
+        const must = entry.checks.filter((c) => c.priority === "Muss");
+        const soll = entry.checks.filter((c) => c.priority === "Soll");
+        const kann = entry.checks.filter((c) => c.priority === "Kann");
+        entry.mustRate = rate(must);
+        entry.sollRate = rate(soll);
+        entry.kannRate = rate(kann);
+        const mustFailed = must.some((c) => c.checked && !c.fulfilled);
+        const mustUnchecked = must.length > 0 && entry.mustRate === null;
+        let score = Math.round(
+          (entry.mustRate ?? 100) * 0.45 +
+            (entry.sollRate ?? 100) * 0.18 +
+            entry.priceScore * 0.16 +
+            entry.deliveryScore * 0.08 +
+            entry.serviceScore * 0.08 +
+            entry.dataCompleteness * 0.05
+        );
+        if (mustFailed) score = Math.min(score, 49);
+        if (entry.dataCompleteness < 35) score = Math.min(score, 55);
+        let recommendation = "Nachrangige Option";
+        if (mustFailed) recommendation = "Ausgeschlossen / Muss-Abweichung";
+        else if (entry.dataCompleteness < 35) recommendation = "Nicht prüfbar / Daten fehlen";
+        else if (mustUnchecked) recommendation = "Manuelle Prüfung der Muss-Kriterien erforderlich";
+        else if (score >= 85 && entry.mustRate === 100) recommendation = "Bevorzugte Empfehlung";
+        else if (score >= 72 && entry.mustRate === 100) recommendation = "Verhandelbare Alternative";
+        entry.score = score;
+        entry.recommendation = recommendation;
+      }
+    }
+
+    return { attempted: true, updated };
+  }
+
   window.runAnalysis = async function () {
     try {
       resetAnalysisState();
@@ -193,6 +309,26 @@
         // Deshalb wird nur die Extraktion serverseitig gemacht, der vorhandene Renderer bleibt kompatibel.
         state.comparison = compareOffers(state.offers, state.requirements, state.project)
           .sort(compareDecisionResults);
+
+        // Zweite Runde: Kriterien, die lokal nicht automatisiert zugeordnet werden konnten
+        // (z.B. Hallenfläche, Baugenehmigung, Statik...), gezielt von der KI beurteilen lassen.
+        const aiVerdictResult = await enrichChecksWithAiVerdicts(
+          state.requirements,
+          state.comparison,
+          reqText,
+          offerText
+        );
+        if (aiVerdictResult.attempted && aiVerdictResult.updated > 0) {
+          state.comparison.sort(compareDecisionResults);
+        }
+        if (aiVerdictResult.attempted && aiVerdictResult.error) {
+          addSystemChat(
+            "Hinweis: Die KI-gestützte Zweitprüfung einiger Muss-/Soll-Kriterien ist fehlgeschlagen (" +
+              aiVerdictResult.error +
+              "). Diese Kriterien bleiben als 'manuell prüfen' markiert."
+          );
+        }
+
         state.bestOffer = chooseBestOffer(state.comparison);
       } else {
         state.comparison = [];
