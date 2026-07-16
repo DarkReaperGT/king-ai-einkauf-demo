@@ -163,6 +163,41 @@
       .trim();
   }
 
+  // Liest die KI-Antwort robust ein: erst normales JSON.parse, dann Versuch nur
+  // den [...]-Bereich zu parsen, und als letzten Ausweg einzelne {...}-Objekte
+  // einsammeln. So geht auch bei einer abgeschnittenen (z.B. durch Token-Limit
+  // gekappten) Antwort nicht automatisch ALLES verloren.
+  function extractJsonArray(raw) {
+    const cleaned = stripJsonFence(raw);
+
+    try {
+      const direct = JSON.parse(cleaned);
+      if (Array.isArray(direct)) return direct;
+    } catch (e) { /* weiter zum naechsten Versuch */ }
+
+    const start = cleaned.indexOf("[");
+    const end = cleaned.lastIndexOf("]");
+    if (start !== -1 && end > start) {
+      try {
+        const sliced = JSON.parse(cleaned.slice(start, end + 1));
+        if (Array.isArray(sliced)) return sliced;
+      } catch (e) { /* weiter zum naechsten Versuch */ }
+    }
+
+    const objectMatches = cleaned.match(/\{[^{}]*\}/g) || [];
+    const salvaged = [];
+    for (const objStr of objectMatches) {
+      try {
+        salvaged.push(JSON.parse(objStr));
+      } catch (e) { /* einzelnes kaputtes Fragment ueberspringen */ }
+    }
+    return salvaged;
+  }
+
+  function idsMatch(a, b) {
+    return text(a).toLowerCase() === text(b).toLowerCase();
+  }
+
   // Fragt die KI gezielt nur für die Kriterien, die die lokale Stichwort-Prüfung
   // NICHT automatisiert zuordnen konnte (check.checked === false). So bleiben
   // eindeutige, exakt prüfbare Sachen (Preis, Lieferzeit, Garantie...) schnell und
@@ -179,7 +214,7 @@
       }
     }
 
-    if (!pending.length) return { attempted: false, updated: 0 };
+    if (!pending.length) return { attempted: false, pendingCount: 0, verdictCount: 0, updated: 0 };
 
     const pairsList = pending
       .map((p) => `- ${p.requirementId} (${p.priority}) für Lieferant "${p.supplier}": ${p.description}`)
@@ -189,9 +224,10 @@
       "Du bist ein präziser Prüf-Assistent für Einkauf und Vergabe. Du bekommst Anforderungen aus einem Lastenheft " +
       "und Rohtext von Lieferantenangeboten. Prüfe für jede genannte Kombination aus Anforderung und Lieferant, ob " +
       "der Angebotstext belegt, dass die Anforderung erfüllt ist. Antworte AUSSCHLIESSLICH mit einem JSON-Array, ohne " +
-      "Erklärtext, ohne Markdown-Codeblock. Format genau so: " +
+      "Erklärtext, ohne Markdown-Codeblock, ohne Denkschritte davor oder danach. Format genau so: " +
       '[{"requirementId":"R01","supplier":"Firma X","fulfilled":true,"evidence":"kurzer Grund, max. 20 Woerter"}]. ' +
-      'Wenn der Angebotstext dazu gar nichts hergibt, setze "fulfilled": null und begruende kurz, warum eine manuelle Pruefung noetig ist.';
+      'Wenn der Angebotstext dazu gar nichts hergibt, setze "fulfilled": null und begruende kurz, warum eine manuelle Pruefung noetig ist. ' +
+      "Halte jede evidence so kurz wie moeglich, damit die Antwort nicht abgeschnitten wird.";
 
     const input =
       `LASTENHEFT (Auszug):\n${truncate(reqRawText, 6000)}\n\n` +
@@ -200,19 +236,26 @@
 
     let raw;
     try {
-      raw = await window.callOpenAI(input, {}, instructions, 3000);
+      // Grosszuegiges Limit: bei "denkenden" Modellen gehen Reasoning-Tokens vom selben
+      // Budget ab, bevor die eigentliche JSON-Antwort geschrieben wird. Zu knapp bemessen
+      // fuehrt das zu abgeschnittenen, kaputten Antworten und ALLES bleibt "manuell pruefen".
+      raw = await window.callOpenAI(input, {}, instructions, 6000);
     } catch (error) {
       console.warn("KI-Zweitprüfung fehlgeschlagen, Kriterien bleiben auf 'manuell prüfen':", error);
-      return { attempted: true, updated: 0, error: error.message || String(error) };
+      return { attempted: true, pendingCount: pending.length, verdictCount: 0, updated: 0, error: error.message || String(error) };
     }
 
-    let verdicts;
-    try {
-      verdicts = JSON.parse(stripJsonFence(raw));
-      if (!Array.isArray(verdicts)) throw new Error("Antwort war kein JSON-Array.");
-    } catch (error) {
-      console.warn("KI-Antwort der Zweitprüfung konnte nicht als JSON gelesen werden:", raw);
-      return { attempted: true, updated: 0, error: "Antwort nicht als JSON lesbar" };
+    const verdicts = extractJsonArray(raw);
+    if (!verdicts.length) {
+      console.warn("KI-Antwort der Zweitprüfung enthielt keine lesbaren Verdikte. Rohantwort:", raw);
+      return {
+        attempted: true,
+        pendingCount: pending.length,
+        verdictCount: 0,
+        updated: 0,
+        error: "Antwort enthielt keine lesbaren Bewertungen (evtl. abgeschnitten oder falsches Format)",
+        rawPreview: truncate(raw, 300)
+      };
     }
 
     let updated = 0;
@@ -221,7 +264,7 @@
       for (const check of entry.checks) {
         if (check.checked) continue;
         const verdict = verdicts.find(
-          (v) => v && String(v.requirementId).trim() === check.id && sameSupplier(v.supplier, entry.offer.supplier)
+          (v) => v && idsMatch(v.requirementId, check.id) && sameSupplier(v.supplier, entry.offer.supplier)
         );
         if (!verdict || verdict.fulfilled === null || verdict.fulfilled === undefined) continue;
         check.checked = true;
@@ -260,7 +303,7 @@
       }
     }
 
-    return { attempted: true, updated };
+    return { attempted: true, pendingCount: pending.length, verdictCount: verdicts.length, updated };
   }
 
   window.runAnalysis = async function () {
@@ -321,12 +364,14 @@
         if (aiVerdictResult.attempted && aiVerdictResult.updated > 0) {
           state.comparison.sort(compareDecisionResults);
         }
-        if (aiVerdictResult.attempted && aiVerdictResult.error) {
-          addSystemChat(
-            "Hinweis: Die KI-gestützte Zweitprüfung einiger Muss-/Soll-Kriterien ist fehlgeschlagen (" +
-              aiVerdictResult.error +
-              "). Diese Kriterien bleiben als 'manuell prüfen' markiert."
-          );
+        if (aiVerdictResult.attempted) {
+          const offen = aiVerdictResult.pendingCount - aiVerdictResult.updated;
+          let summary = `KI-Zweitprüfung: ${aiVerdictResult.pendingCount} offene Kriterien gesendet, ${aiVerdictResult.updated} davon von der KI bestätigt/verworfen, ${offen} bleiben auf "manuell prüfen".`;
+          if (aiVerdictResult.error) {
+            summary += ` Hinweis: ${aiVerdictResult.error}.`;
+            if (aiVerdictResult.rawPreview) summary += ` Rohantwort (Anfang): ${aiVerdictResult.rawPreview}`;
+          }
+          addSystemChat(summary);
         }
 
         state.bestOffer = chooseBestOffer(state.comparison);
