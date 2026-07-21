@@ -857,12 +857,7 @@ Vor einem produktiven Einsatz sind insbesondere notwendig:
 ## Team
 
 **Team 10**
-
-- Temirlan Gongapshev
-- Azra Altinisik
-- Asude Kayhan
-- Ayman El Medhoun
-
+Aus privaten Gründen nicht angezeigt.
 ### Hochschule
 
 TH Köln  
