@@ -8,6 +8,8 @@ Die Anwendung verarbeitet Lastenhefte und Angebotsdateien, strukturiert relevant
 
 KING AI befindet sich im Prototypstatus. Ergebnisse müssen fachlich kontrolliert werden und dürfen nicht ungeprüft für reale Beschaffungs- oder Vergabeentscheidungen verwendet werden.
 
+> **Stand dieser Dokumentation:** bereinigte Projektversion ohne alte HTML-Sicherungen und ohne nicht eingebundene Altdateien.
+
 ---
 
 ## Zentrale Funktionen
@@ -72,7 +74,7 @@ Nicht erfüllte oder nicht nachweisbare Muss-Kriterien werden nicht automatisch 
 - Export strukturierter Gesamtdaten als JSON
 - Export einer Entscheidungsvorlage als HTML
 - Erstellung eines Druckberichts
-- interne Speicherung des Projektstands im Browser
+- temporäre Verwaltung des Projektstands im Browser-Arbeitsspeicher; ohne Datenbank ist dieser Zustand nicht dauerhaft gespeichert
 - serverseitige Speicherung von technischem Feedback
 - anpassbare Seitenleistenfarbe
 - Statusanzeige für die OpenAI-Verbindung
@@ -422,6 +424,17 @@ data/feedback.jsonl
 
 Diese Datei sollte nicht veröffentlicht werden, wenn sie sensible Dokumentinformationen enthalten könnte.
 
+### Aktuelle Datenhaltung
+
+Die aktuelle Version verwendet keine SQL- oder NoSQL-Datenbank.
+
+- Projekte, Uploadzuordnungen, Analyseergebnisse und Chatdaten werden während der Nutzung im Browserzustand verwaltet.
+- Diese Daten sind nicht als belastbare dauerhafte Mehrbenutzerspeicherung ausgelegt.
+- `training-memory.json` enthält feste Regeln und ersetzt keine Projektdatenbank.
+- `feedback.jsonl` kann technisches Feedback speichern, ist aber ebenfalls keine allgemeine Datenbank.
+- GitHub dient als Versions- und Quellcodespeicher und ersetzt keine Datenbank der laufenden Anwendung.
+- Ohne zusätzliche Persistenz können Anwendungsdaten nach einem Neuladen, Neustart oder einer neuen Sitzung verloren gehen.
+
 ---
 
 ## Deployment auf Render
@@ -497,6 +510,8 @@ Verwende in der öffentlich bereitgestellten Version ausschließlich:
 
 ## Projektstruktur
 
+Die bereinigte aktuelle Version enthält ausschließlich die für Betrieb, Konfiguration und Dokumentation benötigten Dateien:
+
 ```text
 king-ai-einkauf-demo-main/
 │
@@ -505,17 +520,12 @@ king-ai-einkauf-demo-main/
 │
 ├── public/
 │   ├── index.html
-│   ├── styles.css
-│   ├── app.js
 │   ├── backend-openai-only.js
 │   ├── backend-analysis-bridge.js
-│   ├── quiet-status.js
 │   ├── key-status-lamp.js
-│   ├── auth-profile.js
-│   └── verschiedene Sicherungskopien
+│   └── quiet-status.js
 │
 ├── server.js
-├── server-openai.js
 ├── package.json
 ├── package-lock.json
 ├── .env.example
@@ -523,61 +533,121 @@ king-ai-einkauf-demo-main/
 └── README.md
 ```
 
+Alte Sicherungskopien sowie die nicht eingebundenen Dateien `app.js`, `styles.css`, `auth-profile.js` und `server-openai.js` wurden aus dem aktuellen Projektstand entfernt.
+
 ---
 
-## Beschreibung wichtiger Dateien
+## Beschreibung der aktuellen Dateien
 
 ### `server.js`
 
-Zentraler Node.js-/Express-Server mit:
+Zentraler Einstiegspunkt des Node.js-/Express-Backends. Die Datei:
 
-- OpenAI-Backend-Proxy,
-- Lastenheftanalyse,
-- Angebotsanalyse,
-- Angebotsvergleich,
-- Datenvalidierung,
-- Lieferantenfilterung,
-- Trainingsspeicher,
-- Feedbackspeicherung,
-- Bereitstellung des Frontends.
+- startet den Webserver,
+- stellt den Ordner `public` als Frontend bereit,
+- lädt Umgebungsvariablen,
+- liest den Trainingsspeicher ein,
+- schützt den OpenAI API-Key vor einer Speicherung im Browser,
+- stellt die Analyse- und Status-Endpunkte bereit,
+- sendet Analyseanfragen an die OpenAI Responses API,
+- validiert und bereinigt strukturierte Antworten,
+- kann technisches Feedback serverseitig speichern.
+
+Ohne `server.js` starten weder Backend noch Frontend.
 
 ### `public/index.html`
 
-Hauptoberfläche der Anwendung mit:
+Hauptdatei der Benutzeroberfläche. Sie enthält:
 
-- Dashboard,
-- Projekten,
-- Datei-Upload,
-- Lastenheftanalyse,
-- Angebotsanalyse,
-- Vergleich,
-- Entscheidungsempfehlung,
+- die HTML-Struktur,
+- die aktiven CSS-Regeln,
+- einen großen Teil der Frontend-Logik,
+- Dashboard und Projektansichten,
+- Datei-Upload und clientseitige Parser,
+- Lastenheft- und Angebotsdarstellung,
+- Vergleich und Entscheidungsempfehlung,
 - Exportfunktionen,
-- KI-Chat,
-- Einstellungen.
+- KI-Chat und Einstellungen.
+
+Da keine separate aktive `styles.css` und keine separate aktive `app.js` mehr vorhanden sind, befinden sich Gestaltung und wesentliche Anwendungslogik direkt in dieser Datei.
 
 ### `public/backend-openai-only.js`
 
-Stellt sicher, dass OpenAI ausschließlich über das Backend aufgerufen wird.
+Kapselt die Kommunikation des Browsers mit dem eigenen Backend. Direkte OpenAI-Aufrufe aus dem Browser werden vermieden, damit der API-Key ausschließlich serverseitig gespeichert bleibt.
 
 ### `public/backend-analysis-bridge.js`
 
-Verbindet die Benutzeroberfläche mit den serverseitigen Analyse-Endpunkten und überträgt die Ergebnisse in den Anwendungszustand.
+Verbindet die Benutzeroberfläche mit den spezialisierten Backend-Endpunkten für:
 
-### `public/auth-profile.js`
+- Lastenheftanalyse,
+- Angebotsanalyse,
+- Vergleich und Empfehlung.
 
-Enthält lediglich den Hinweis, dass Login, Registrierung und Profilfunktionen deaktiviert sind.
+Die Datei überträgt extrahierten Dokumenttext an das Backend und schreibt die strukturierten Antworten zurück in den aktuellen Anwendungszustand.
 
-Die Datei kann entfernt werden, sofern sie nicht mehr eingebunden oder später benötigt wird.
+### `public/key-status-lamp.js`
+
+Prüft über den Systemstatus-Endpunkt, ob:
+
+- das Backend erreichbar ist,
+- ein OpenAI API-Key konfiguriert ist,
+- die KI-Verbindung grundsätzlich verwendet werden kann.
+
+Das Ergebnis wird als Statusanzeige in der Benutzeroberfläche dargestellt.
+
+### `public/quiet-status.js`
+
+Passt bestimmte Status- und Hinweistexte in der Oberfläche an, damit technische Meldungen kompakter und für die Präsentation weniger störend erscheinen.
 
 ### `data/training-memory.json`
 
-Enthält Filterregeln und Hinweise zur Verbesserung der Extraktion.
+Enthält feste Filter- und Bereinigungsregeln, beispielsweise:
 
-### `server-openai.js`
+- Begriffe, die nicht als Lieferant gelten,
+- typische Bestandteile von Firmennamen,
+- Regeln zur Bereinigung erkannter Anforderungen,
+- Hinweise gegen falsche Lieferantenerkennung.
 
-Kompatibilitätsdatei für ältere Projektstände. Die aktuelle Anwendung nutzt `server.js` als zentrales Backend.
+Die Datei ist ein regelbasierter Projektspeicher, aber keine lernende KI und keine Datenbank für Benutzerprojekte.
 
+### `package.json`
+
+Beschreibt das Node.js-Projekt. Die Datei enthält insbesondere:
+
+- Projektname und Version,
+- Startskript,
+- benötigte Laufzeitpakete,
+- Node.js-Anforderungen.
+
+`npm start` verwendet den dort definierten Startbefehl und führt `server.js` aus.
+
+### `package-lock.json`
+
+Fixiert die tatsächlich installierten Paketversionen. Dadurch installiert `npm install` beziehungsweise `npm ci` auf unterschiedlichen Rechnern möglichst denselben Abhängigkeitsstand.
+
+### `.env.example`
+
+Vorlage für die benötigten Umgebungsvariablen:
+
+- `OPENAI_API_KEY`,
+- `OPENAI_MODEL`,
+- `PORT`,
+- `HOST`.
+
+Die Datei enthält keinen echten geheimen Schlüssel. Für den lokalen Betrieb wird daraus eine nicht veröffentlichte `.env` erstellt.
+
+### `.gitignore`
+
+Legt fest, welche lokalen oder sensiblen Dateien Git nicht versionieren soll. Dazu gehören insbesondere:
+
+- `.env`,
+- `node_modules`,
+- lokale Feedbackdaten,
+- Editor- und Betriebssystemdateien.
+
+### `README.md`
+
+Dokumentiert Installation, Betrieb, Architektur, Sicherheit, Deployment, Projektgrenzen und den aktuellen Entwicklungsstand.
 ---
 
 ## Test-&-Learn-Phase
@@ -828,7 +898,7 @@ Prüfen:
 | KI-Anbindung | OpenAI Responses API |
 | Konfiguration | dotenv |
 | Datenformate | JSON, JSONL, CSV |
-| Lokale Speicherung | Browser-Speicher |
+| Temporärer Anwendungszustand | Browser-Arbeitsspeicher; keine Projektdatenbank |
 | Entwicklung | Visual Studio Code |
 | Versionsverwaltung | Git und GitHub |
 | Hosting | Render |
